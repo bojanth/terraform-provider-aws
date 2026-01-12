@@ -395,6 +395,44 @@ func TestAccSageMakerEndpointConfiguration_ProductionVariants_variantNameGenerat
 	})
 }
 
+func TestAccSageMakerEndpointConfiguration_ProductionVariants_capacityReservationConfig(t *testing.T) {
+	ctx := acctest.Context(t)
+	rName := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
+	resourceName := "aws_sagemaker_endpoint_configuration.test"
+	capacityReservationPreference := "capacity-reservations-only"
+	// Users can't create ML reservations on their own. This ARN is provided by AWS customer service.
+	mlReservationARN := "arn:aws:sagemaker:us-east-1:123456789123:ml-reservation/test-ml-reservation"
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.PreCheck(ctx, t) },
+		ErrorCheck:               acctest.ErrorCheck(t, names.SageMakerServiceID),
+		ProtoV5ProviderFactories: acctest.ProtoV5ProviderFactories,
+		CheckDestroy:             testAccCheckEndpointConfigurationDestroy(ctx),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccEndpointConfigurationConfig_productionVariantCapacityReservationConfig(rName, capacityReservationPreference, mlReservationARN),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckEndpointConfigurationExists(ctx, resourceName),
+					resource.TestCheckResourceAttr(resourceName, names.AttrName, rName),
+					resource.TestCheckResourceAttr(resourceName, "production_variants.#", "1"),
+					resource.TestCheckResourceAttrSet(resourceName, "production_variants.0.capacity_reservation_config"),
+					resource.TestCheckResourceAttr(resourceName, "production_variants.0.capacity_reservation_config.capacity_reservation_preference", capacityReservationPreference),
+					resource.TestCheckResourceAttr(resourceName, "production_variants.0.capacity_reservation_config.ml_reservation_arn", mlReservationARN),
+					resource.TestCheckResourceAttr(resourceName, "shadow_production_variants.#", "1"),
+					resource.TestCheckResourceAttrSet(resourceName, "shadow_production_variants.0.capacity_reservation_config"),
+					resource.TestCheckResourceAttr(resourceName, "shadow_production_variants.0.capacity_reservation_config.capacity_reservation_preference", capacityReservationPreference),
+					resource.TestCheckResourceAttr(resourceName, "shadow_production_variants.0.capacity_reservation_config.ml_reservation_arn", mlReservationARN),
+				),
+			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
 func TestAccSageMakerEndpointConfiguration_kmsKeyID(t *testing.T) {
 	ctx := acctest.Context(t)
 	rName := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
@@ -1215,6 +1253,38 @@ resource "aws_sagemaker_endpoint_configuration" "test" {
   }
 }
 `, rName))
+}
+
+func testAccEndpointConfigurationConfig_productionVariantCapacityReservationConfig(rName, capacityReservationPreference, mlReservationARN string) string {
+	return acctest.ConfigCompose(testAccEndpointConfigurationConfig_base(rName), fmt.Sprintf(`
+resource "aws_sagemaker_endpoint_configuration" "test" {
+  name = %[1]q
+
+  production_variants {
+    model_name             = aws_sagemaker_model.test.name
+    initial_instance_count = 2
+    instance_type          = "ml.t2.medium"
+    initial_variant_weight = 1
+
+	capacity_reservation_config {
+      capacity_reservation_preference = %[2]q
+      ml_reservation_arn              = %[3]q
+    }
+  }
+
+  shadow_production_variants {
+    model_name             = aws_sagemaker_model.test.name
+    initial_instance_count = 2
+    instance_type          = "ml.t2.medium"
+    initial_variant_weight = 1
+
+	capacity_reservation_config {
+      capacity_reservation_preference = %[2]q
+      ml_reservation_arn              = %[3]q
+    }
+  }
+}
+`, rName, capacityReservationPreference, mlReservationARN))
 }
 
 func testAccEndpointConfigurationConfig_kmsKeyID(rName string) string {
